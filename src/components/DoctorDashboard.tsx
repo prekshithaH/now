@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, 
   MessageSquare, 
@@ -24,63 +24,159 @@ interface DoctorDashboardProps {
 const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctor }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [selectedPatient, setSelectedPatient] = useState<string | null>(null);
+  const [patients, setPatients] = useState<any[]>([]);
 
-  const mockPatients = [
-    {
-      id: '1',
-      name: 'Sarah Johnson',
-      age: 28,
-      week: 24,
-      dueDate: '2024-08-15',
-      status: 'normal',
-      lastVisit: '2024-01-15',
-      avatar: 'SJ'
-    },
-    {
-      id: '2',
-      name: 'Emily Davis',
-      age: 32,
-      week: 18,
-      dueDate: '2024-10-20',
-      status: 'attention',
-      lastVisit: '2024-01-10',
-      avatar: 'ED'
-    },
-    {
-      id: '3',
-      name: 'Jessica Wilson',
-      age: 29,
-      week: 36,
-      dueDate: '2024-06-05',
-      status: 'critical',
-      lastVisit: '2024-01-12',
-      avatar: 'JW'
-    }
-  ];
+  // Load patients assigned to Dr. Rajesh
+  useEffect(() => {
+    const loadPatients = () => {
+      const registeredUsers = JSON.parse(localStorage.getItem('registeredUsers') || '[]');
+      const assignedPatients = registeredUsers.filter((user: any) => 
+        user.role === 'patient' && user.doctorId === 'dr-rajesh-001'
+      );
+      
+      // Transform patient data for display
+      const patientsData = assignedPatients.map((patient: any) => ({
+        id: patient.id,
+        name: patient.name,
+        age: calculatePatientAge(patient.dueDate),
+        week: patient.currentWeek || 0,
+        dueDate: patient.dueDate || 'Not set',
+        status: getPatientStatus(patient),
+        lastVisit: getLastVisitDate(patient),
+        avatar: patient.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase() || 'P',
+        email: patient.email,
+        healthRecords: patient.healthRecords || []
+      }));
+      
+      setPatients(patientsData);
+    };
 
-  const mockAlerts = [
-    {
-      id: '1',
-      patientName: 'Sarah Johnson',
-      message: 'High blood pressure reading: 145/95',
-      time: '2 hours ago',
-      type: 'warning'
-    },
-    {
-      id: '2',
-      patientName: 'Emily Davis',
-      message: 'Missed weekly check-in',
-      time: '1 day ago',
-      type: 'info'
-    },
-    {
-      id: '3',
-      patientName: 'Jessica Wilson',
-      message: 'Emergency contact requested',
-      time: '3 hours ago',
-      type: 'urgent'
-    }
-  ];
+    loadPatients();
+    
+    // Refresh patient data every 30 seconds to catch updates
+    const interval = setInterval(loadPatients, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const calculatePatientAge = (dueDate: string) => {
+    if (!dueDate) return 28; // Default age
+    // Calculate age based on due date (assuming average pregnancy age)
+    return 28; // Simplified for demo
+  };
+
+  const getPatientStatus = (patient: any) => {
+    const healthRecords = patient.healthRecords || [];
+    if (healthRecords.length === 0) return 'attention';
+    
+    // Check for recent concerning readings
+    const recentRecords = healthRecords.filter((record: any) => {
+      const recordDate = new Date(record.date);
+      const daysSince = (Date.now() - recordDate.getTime()) / (1000 * 60 * 60 * 24);
+      return daysSince <= 7; // Records from last 7 days
+    });
+    
+    // Check for high blood pressure
+    const bpRecords = recentRecords.filter((r: any) => r.type === 'blood_pressure');
+    const hasHighBP = bpRecords.some((r: any) => 
+      r.data.systolic > 140 || r.data.diastolic > 90
+    );
+    
+    // Check for high sugar levels
+    const sugarRecords = recentRecords.filter((r: any) => r.type === 'sugar_level');
+    const hasHighSugar = sugarRecords.some((r: any) => 
+      (r.data.testType === 'fasting' && r.data.level > 95) ||
+      (r.data.testType === 'random' && r.data.level > 140)
+    );
+    
+    if (hasHighBP || hasHighSugar) return 'critical';
+    if (recentRecords.length === 0) return 'attention';
+    return 'normal';
+  };
+
+  const getLastVisitDate = (patient: any) => {
+    const healthRecords = patient.healthRecords || [];
+    if (healthRecords.length === 0) return 'No records';
+    
+    const lastRecord = healthRecords.sort((a: any, b: any) => 
+      new Date(b.date).getTime() - new Date(a.date).getTime()
+    )[0];
+    
+    return new Date(lastRecord.date).toLocaleDateString();
+  };
+
+  // Generate alerts based on real patient data
+  const generateAlerts = () => {
+    const alerts: any[] = [];
+    
+    patients.forEach(patient => {
+      const recentRecords = (patient.healthRecords || []).filter((record: any) => {
+        const recordDate = new Date(record.date);
+        const hoursSince = (Date.now() - recordDate.getTime()) / (1000 * 60 * 60);
+        return hoursSince <= 24; // Records from last 24 hours
+      });
+      
+      recentRecords.forEach((record: any) => {
+        if (record.type === 'blood_pressure') {
+          if (record.data.systolic > 140 || record.data.diastolic > 90) {
+            alerts.push({
+              id: `bp-${record.id}`,
+              patientName: patient.name,
+              message: `High blood pressure reading: ${record.data.systolic}/${record.data.diastolic}`,
+              time: getTimeAgo(record.date),
+              type: 'urgent'
+            });
+          }
+        }
+        
+        if (record.type === 'sugar_level') {
+          const isHigh = (record.data.testType === 'fasting' && record.data.level > 95) ||
+                        (record.data.testType === 'random' && record.data.level > 140);
+          if (isHigh) {
+            alerts.push({
+              id: `sugar-${record.id}`,
+              patientName: patient.name,
+              message: `High sugar level: ${record.data.level} mg/dL (${record.data.testType})`,
+              time: getTimeAgo(record.date),
+              type: 'warning'
+            });
+          }
+        }
+      });
+      
+      // Check for missed check-ins
+      const lastRecord = patient.healthRecords?.sort((a: any, b: any) => 
+        new Date(b.date).getTime() - new Date(a.date).getTime()
+      )[0];
+      
+      if (lastRecord) {
+        const daysSinceLastRecord = (Date.now() - new Date(lastRecord.date).getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSinceLastRecord > 7) {
+          alerts.push({
+            id: `missed-${patient.id}`,
+            patientName: patient.name,
+            message: `No health updates for ${Math.floor(daysSinceLastRecord)} days`,
+            time: `${Math.floor(daysSinceLastRecord)} days ago`,
+            type: 'info'
+          });
+        }
+      }
+    });
+    
+    return alerts.slice(0, 5); // Return top 5 alerts
+  };
+
+  const getTimeAgo = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+    
+    if (diffInHours < 1) return 'Just now';
+    if (diffInHours < 24) return `${Math.floor(diffInHours)} hours ago`;
+    const diffInDays = Math.floor(diffInHours / 24);
+    return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
+  };
+
+  const alerts = generateAlerts();
 
   const renderOverview = () => (
     <div className="space-y-6">
@@ -90,7 +186,7 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctor }) => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Total Patients</p>
-              <p className="text-2xl font-bold text-gray-800">24</p>
+              <p className="text-2xl font-bold text-gray-800">{patients.length}</p>
             </div>
             <Users className="w-8 h-8 text-blue-500" />
           </div>
@@ -100,7 +196,12 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctor }) => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">This Week</p>
-              <p className="text-2xl font-bold text-gray-800">12</p>
+              <p className="text-2xl font-bold text-gray-800">{patients.filter(p => p.healthRecords?.some((r: any) => {
+                const recordDate = new Date(r.date);
+                const weekStart = new Date();
+                weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+                return recordDate >= weekStart;
+              })).length}</p>
             </div>
             <Calendar className="w-8 h-8 text-green-500" />
           </div>
@@ -110,7 +211,7 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctor }) => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Urgent Cases</p>
-              <p className="text-2xl font-bold text-gray-800">3</p>
+              <p className="text-2xl font-bold text-gray-800">{patients.filter(p => p.status === 'critical').length}</p>
             </div>
             <AlertCircle className="w-8 h-8 text-red-500" />
           </div>
@@ -120,7 +221,7 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctor }) => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Messages</p>
-              <p className="text-2xl font-bold text-gray-800">8</p>
+              <p className="text-2xl font-bold text-gray-800">{alerts.length}</p>
             </div>
             <MessageSquare className="w-8 h-8 text-purple-500" />
           </div>
@@ -135,7 +236,7 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctor }) => {
         </div>
         
         <div className="space-y-3">
-          {mockAlerts.map((alert) => (
+          {alerts.map((alert) => (
             <div key={alert.id} className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
               <div className={`w-2 h-2 rounded-full ${
                 alert.type === 'urgent' ? 'bg-red-500' : 
@@ -164,7 +265,7 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctor }) => {
         </div>
         
         <div className="space-y-3">
-          {mockPatients.slice(0, 3).map((patient) => (
+          {patients.slice(0, 3).map((patient) => (
             <div key={patient.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium">
@@ -216,7 +317,7 @@ const DoctorDashboard: React.FC<DoctorDashboardProps> = ({ doctor }) => {
 
       {/* Patient Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {mockPatients.map((patient) => (
+        {patients.map((patient) => (
           <div key={patient.id} className="bg-white rounded-xl p-6 shadow-sm border border-gray-100">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-3">

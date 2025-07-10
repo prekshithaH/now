@@ -10,7 +10,8 @@ export interface User {
 export interface Patient extends User {
   role: 'patient';
   dueDate?: string;
-  doctorId?: string;
+  doctorId: string;
+  doctorName: string;
   emergencyContacts?: EmergencyContact[];
   currentWeek?: number;
   bloodType?: string;
