@@ -99,6 +99,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       newUser.emergencyContacts = [];
       newUser.healthRecords = [];
       newUser.profileCompleted = false; // Mark as incomplete for new patients
+      newUser.doctorId = 'dr-rajesh-001'; // Automatically assign Dr. Rajesh
+      newUser.doctorName = 'Dr. Rajesh';
       // Don't set dueDate or currentWeek - let user fill these in profile completion
     } else {
       newUser.specialization = '';
@@ -131,7 +133,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updatedUser = { 
         ...user, 
         ...profileData, 
-        profileCompleted: true // Mark profile as completed
+        profileCompleted: true, // Mark profile as completed
+        doctorId: 'dr-rajesh-001', // Ensure Dr. Rajesh is assigned
+        doctorName: 'Dr. Rajesh'
       };
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
